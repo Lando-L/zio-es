@@ -9,7 +9,9 @@ sealed trait EventSourcing[S, E](private val hub: Hub[E]):
   def subscribe: UManaged[Dequeue[E]]
 
 object EventSourcing:
-  def make[S, E](capacity: Int)(handler: (S, E) => S)(using Tag[EventJournal[E]]): URIO[Has[EventJournal[E]], EventSourcing[S, E]] = {
+  def make[S, E](
+      capacity: Int
+  )(handler: (S, E) => S)(using Tag[EventJournal[E]]): URIO[Has[EventJournal[E]], EventSourcing[S, E]] =
     ZIO.serviceWith[EventJournal[E]] { journal =>
       Hub.bounded[E](capacity).map { hub =>
         new EventSourcing[S, E](hub):
@@ -26,9 +28,10 @@ object EventSourcing:
             hub.subscribe
       }
     }
-  }
 
-  def makeM[S, E](capacity: Int)(handler: (S, E) => Task[S])(using Tag[EventJournal[E]]): URIO[Has[EventJournal[E]], EventSourcing[S, E]] = {
+  def makeM[S, E](
+      capacity: Int
+  )(handler: (S, E) => Task[S])(using Tag[EventJournal[E]]): URIO[Has[EventJournal[E]], EventSourcing[S, E]] =
     ZIO.serviceWith[EventJournal[E]] { journal =>
       Hub.bounded[E](capacity).map { hub =>
         new EventSourcing[S, E](hub):
@@ -43,6 +46,5 @@ object EventSourcing:
 
           override def subscribe =
             hub.subscribe
-      }   
+      }
     }
-  }

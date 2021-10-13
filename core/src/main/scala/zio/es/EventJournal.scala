@@ -15,4 +15,3 @@ object EventJournal:
 
   def retrieve[E](persitenceId: PersitenceId): ZStream[Has[EventJournal[E]], Throwable, E] =
     ZStream.serviceWithStream[EventJournal[E]](_.retrieve(persitenceId))
-  

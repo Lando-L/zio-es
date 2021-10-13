@@ -1,6 +1,8 @@
 ThisBuild / organization := "dev.zio"
 ThisBuild / version := "0.1.0"
 ThisBuild / scalaVersion := "3.0.2"
+ThisBuild / semanticdbEnabled := true
+ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
 
 lazy val zioVersion = "1.0.12"
 
