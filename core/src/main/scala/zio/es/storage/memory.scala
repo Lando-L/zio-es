@@ -1,6 +1,6 @@
 package zio.es.storage.memory
 
-import zio.{Has, Ref, ULayer, ZIO, ZLayer}
+import zio.{Has, Ref, Tag, URLayer, ZIO, ZLayer}
 import zio.es.{EventJournal, PersitenceId}
 import zio.stream.ZStream
 import java.util.NoSuchElementException
@@ -20,5 +20,5 @@ case class InMemoryStorage[E](private val ref: Ref[Map[PersitenceId, Queue[E]]])
     }
 
 object InMemoryStorage:
-  def layer[E](ref: Ref[Map[PersitenceId, Queue[E]]]): ULayer[Has[EventJournal[E]]] =
-    ZLayer.succeed(InMemoryStorage(ref))
+  def layer[E](using Tag[Ref[Map[PersitenceId, Queue[E]]]], Tag[EventJournal[E]]): URLayer[Has[Ref[Map[PersitenceId, Queue[E]]]], Has[EventJournal[E]]] =
+    ZLayer.fromService(InMemoryStorage(_))

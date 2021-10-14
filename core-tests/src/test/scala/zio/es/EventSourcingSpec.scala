@@ -10,9 +10,7 @@ import zio.{Has, RIO, Task, ULayer, URLayer, ZLayer}
 
 object EventSourcingSpec extends DefaultRunnableSpec:
   enum Event:
-    case Increment
-    case Decrement
-    case Reset
+    case Increment, Decrement, Reset
 
   object EventJournalMock extends Mock[Has[EventJournal[Event]]]:
   

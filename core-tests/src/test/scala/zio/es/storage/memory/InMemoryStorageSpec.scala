@@ -10,9 +10,7 @@ import java.util.NoSuchElementException
 
 object InMemoryStorageSpec extends DefaultRunnableSpec:
   enum Event:
-    case Increment
-    case Decrement
-    case Reset
+    case Increment, Decrement, Reset
 
   val id = PersitenceId("1")
 
