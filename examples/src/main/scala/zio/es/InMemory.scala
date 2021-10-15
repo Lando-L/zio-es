@@ -1,4 +1,4 @@
-import zio.{App, Dequeue, Has, Ref, RIO, Task, UManaged, URLayer, ZIO, ZLayer, ZManaged, console}
+import zio.{App, Dequeue, Has, Ref, RIO, Task, UManaged, URLayer, URManaged, ZIO, ZLayer, ZManaged, console}
 import zio.es.{EventJournal, EventSourcing, PersistenceId}
 import zio.es.storage.memory.InMemoryStorage
 import zio.stream.{Sink, ZStream}
@@ -20,18 +20,14 @@ enum Event:
   case Removed(item: String)
 
 trait ShoppingCart:
-  def create(cart: PersistenceId): Task[Unit]
-  def state(cart: PersistenceId): Task[State]
+  def get(cart: PersistenceId): Task[State]
   def add(cart: PersistenceId)(item: String)(quantity: Int): Task[Unit]
   def remove(cart: PersistenceId)(item: String): Task[Unit]
-  def subscribe(cart: PersistenceId): Task[UManaged[Dequeue[Event]]]
+  def subscribe: UManaged[Dequeue[Event]]
 
 object ShoppingCart:
-  def create(cart: PersistenceId): RIO[Has[ShoppingCart], Unit] =
-    ZIO.serviceWith[ShoppingCart](_.create(cart))
-
-  def state(cart: PersistenceId): RIO[Has[ShoppingCart], State] =
-    ZIO.serviceWith[ShoppingCart](_.state(cart))
+  def get(cart: PersistenceId): RIO[Has[ShoppingCart], State] =
+    ZIO.serviceWith[ShoppingCart](_.get(cart))
 
   def add(cart: PersistenceId)(item: String)(quantity: Int): RIO[Has[ShoppingCart], Unit] =
     ZIO.serviceWith[ShoppingCart](_.add(cart)(item)(quantity))
@@ -39,83 +35,60 @@ object ShoppingCart:
   def remove(cart: PersistenceId)(item: String): RIO[Has[ShoppingCart], Unit] =
     ZIO.serviceWith[ShoppingCart](_.remove(cart)(item))
 
-  def subscribe(cart: PersistenceId): RIO[Has[ShoppingCart], UManaged[Dequeue[Event]]] =
-    ZIO.serviceWith[ShoppingCart](_.subscribe(cart))
+  def subscribe: URManaged[Has[ShoppingCart], Dequeue[Event]] =
+    ZManaged.serviceWithManaged[ShoppingCart](_.subscribe)
 
-case class ShoppingCartLive(ref: Ref[Map[PersistenceId, EventSourcing[State, Event]]], journal: EventJournal[Event])
-    extends ShoppingCart:
-  override def create(cart: PersistenceId) =
-    for
-      storage <- ref.get
-      if !storage.contains(cart)
-      source <- journal.make[State](cart)(1) {
-        case (state, Event.Added(item, quantity)) => state.add(item)(quantity)
-        case (state, Event.Removed(item))         => state.remove(item)
-      }
-      _ <- ref.update(_ + (cart -> source))
-    yield ()
-
-  override def state(cart: PersistenceId) =
-    for
-      storage <- ref.get
-      events  <- ZIO.fromOption(storage.get(cart)).orElseFail(NoSuchElementException())
-      state   <- events.replay(State.empty)
-    yield state
+case class ShoppingCartLive(source: EventSourcing[State, Event]) extends ShoppingCart:
+  override def get(cart: PersistenceId) =
+    source.replay(cart)(State.empty)
 
   override def add(cart: PersistenceId)(item: String)(quantity: Int) =
-    for
-      storage <- ref.get
-      events  <- ZIO.fromOption(storage.get(cart)).orElseFail(NoSuchElementException())
-      _       <- events.log(Event.Added(item, quantity))
-    yield ()
+    source.log(cart)(Event.Added(item, quantity))
 
   override def remove(cart: PersistenceId)(item: String) =
-    for
-      storage <- ref.get
-      events  <- ZIO.fromOption(storage.get(cart)).orElseFail(NoSuchElementException())
-      _       <- events.log(Event.Removed(item))
-    yield ()
+    source.log(cart)(Event.Removed(item))
 
-  override def subscribe(cart: PersistenceId) =
-    for
-      storage <- ref.get
-      events  <- ZIO.fromOption(storage.get(cart)).orElseFail(NoSuchElementException())
-    yield events.subscribe
+  override def subscribe =
+    source.subscribe
 
 object ShoppingCartLive:
-  val layer: URLayer[Has[Ref[Map[PersistenceId, EventSourcing[State, Event]]]] & Has[EventJournal[Event]], Has[
-    ShoppingCart
-  ]] =
-    ZLayer.fromServices[Ref[Map[PersistenceId, EventSourcing[State, Event]]], EventJournal[Event], ShoppingCart] {
-      (ref, journal) => ShoppingCartLive(ref, journal)
-    }
+  val layer: URLayer[Has[EventSourcing[State, Event]], Has[ShoppingCart]] =
+    ZLayer.fromService(ShoppingCartLive(_))
 
 object Example extends App:
   override def run(args: List[String]) =
     val alice = PersistenceId("Alice")
 
     val program =
-      ShoppingCart.create(alice).flatMap { _ =>
-        ShoppingCart.subscribe(alice).flatMap { source =>
-          source.use { subscription =>
-            val stream = ZStream.fromQueue(subscription)
+      ShoppingCart.subscribe.use { subscription =>
+        val stream = ZStream.fromQueue(subscription)
 
-            for
-              fiber  <- stream.take(3).map(_.toString).runCollect.fork
-              _      <- ShoppingCart.add(alice)("Apples")(5)
-              _      <- ShoppingCart.add(alice)("Algae")(2)
-              _      <- ShoppingCart.remove(alice)("Algae")
-              events <- fiber.join
-              state  <- ShoppingCart.state(alice)
-              _      <- console.putStrLn(state.toString)
-              _      <- ZIO.foreach(events)(console.putStrLn(_))
-            yield state
-          }
-        }
+        for
+          fiber  <- stream.take(3).map(_.toString).runCollect.fork
+          _      <- ShoppingCart.add(alice)("Apples")(5)
+          _      <- ShoppingCart.add(alice)("Algae")(2)
+          _      <- ShoppingCart.remove(alice)("Algae")
+          events <- fiber.join
+          state  <- ShoppingCart.get(alice)
+          _      <- console.putStrLn(state.toString)
+          _      <- ZIO.foreach(events)(console.putStrLn(_))
+        yield state
       }
 
-    val journalRef  = ZLayer.fromEffect(Ref.make[Map[PersistenceId, Queue[Event]]](Map.empty))
-    val shoppingRef = ZLayer.fromEffect(Ref.make[Map[PersistenceId, EventSourcing[State, Event]]](Map.empty))
-    val env         = (shoppingRef ++ (journalRef >>> InMemoryStorage.layer)) >>> ShoppingCartLive.layer
+    val journal =
+      ZLayer.fromEffect(
+        Ref.make[Map[PersistenceId, Queue[Event]]](Map.empty)
+      )
+
+    val source =
+      ZLayer.fromEffect(
+        EventJournal.make[State, Event](1) {
+          case (state, Event.Added(item, quantity)) => state.add(item)(quantity)
+          case (state, Event.Removed(item))         => state.remove(item)
+        }
+      )
+
+    val env =
+      journal >>> InMemoryStorage.layer >>> source >>> ShoppingCartLive.layer
 
     program.provideCustomLayer(env).exitCode

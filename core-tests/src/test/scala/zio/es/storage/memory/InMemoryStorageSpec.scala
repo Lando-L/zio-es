@@ -10,7 +10,7 @@ import java.util.NoSuchElementException
 
 object InMemoryStorageSpec extends DefaultRunnableSpec:
   enum Event:
-    case Increment, Decrement, Reset
+    case Increment, Decrement
 
   val id = PersistenceId("1")
 
@@ -27,8 +27,7 @@ object InMemoryStorageSpec extends DefaultRunnableSpec:
     },
     testM("retrieve correcly replays the events from the storage") {
       for
-        ref <- Ref
-          .make[Map[PersistenceId, Queue[Event]]](Map(id -> Queue(Event.Increment, Event.Increment, Event.Decrement)))
+        ref <- Ref.make(Map(id -> Queue(Event.Increment, Event.Increment, Event.Decrement)))
         journal = InMemoryStorage(ref)
         events <- journal.retrieve(id).run(Sink.collectAll)
       yield assert(events)(equalTo(Chunk(Event.Increment, Event.Increment, Event.Decrement)))

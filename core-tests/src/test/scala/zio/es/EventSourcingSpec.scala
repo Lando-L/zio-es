@@ -10,7 +10,7 @@ import zio.{Has, RIO, Task, ULayer, URLayer, ZLayer}
 
 object EventSourcingSpec extends DefaultRunnableSpec:
   enum Event:
-    case Increment, Decrement, Reset
+    case Increment, Decrement
 
   object EventJournalMock extends Mock[Has[EventJournal[Event]]]:
 
@@ -36,10 +36,10 @@ object EventSourcingSpec extends DefaultRunnableSpec:
     testM("log correctly persists an event and publishes it subsequently") {
 
       val program =
-        EventJournal.make[Any, Event](id)(1)((state, _) => state).flatMap { journal =>
+        EventJournal.make[Any, Event](1)((state, _) => state).flatMap { journal =>
           journal.subscribe.use { sub =>
             for
-              _      <- journal.log(event)
+              _      <- journal.log(id)(event)
               events <- sub.takeAll
             yield events
           }
@@ -55,14 +55,16 @@ object EventSourcingSpec extends DefaultRunnableSpec:
         event match
           case Event.Increment => state + 1
           case Event.Decrement => state - 1
-          case Event.Reset     => 0
 
-      val program = EventJournal.make[Int, Event](id)(1)(eventHandler).flatMap(_.replay(0))
+      val program = EventJournal
+        .make[Int, Event](1)(eventHandler)
+        .flatMap(_.replay(id)(0))
 
       val env = EventJournalMock.Retrieve(
         equalTo(id),
         value(ZStream.fromIterable(List(Event.Increment, Event.Increment, Event.Decrement)))
       )
+
       val result = program.provideLayer(env)
 
       assertM(result)(equalTo(1))
