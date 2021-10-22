@@ -5,6 +5,7 @@ ThisBuild / semanticdbEnabled := true
 ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
 
 lazy val zioVersion = "1.0.12"
+lazy val zioKafkaVersion = "0.17.0"
 
 lazy val root = (project in file("."))
   .settings(name := "zio-es")
@@ -24,8 +25,8 @@ lazy val coreTests = (project in file("core-tests"))
     libraryDependencies ++= Seq(
       "dev.zio"       %% "zio"              % zioVersion,
       "dev.zio"       %% "zio-streams"      % zioVersion,
-      "dev.zio"       %% "zio-test"         % zioVersion % "test",
-      "dev.zio"       %% "zio-test-sbt"     % zioVersion % "test"
+      "dev.zio"       %% "zio-test"         % zioVersion % Test,
+      "dev.zio"       %% "zio-test-sbt"     % zioVersion % Test
     )
   )
   .settings(testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"))
@@ -45,7 +46,7 @@ lazy val kafka = (project in file("kafka"))
     libraryDependencies ++= Seq(
       "dev.zio"       %% "zio"              % zioVersion,
       "dev.zio"       %% "zio-streams"      % zioVersion,
-      "dev.zio"       %% "zio-kafka"        % "0.17.0"
+      "dev.zio"       %% "zio-kafka"        % zioKafkaVersion
     )
   )
 
@@ -55,9 +56,9 @@ lazy val kafkaTest = (project in file("kafka-tests"))
     libraryDependencies ++= Seq(
       "dev.zio"       %% "zio"              % zioVersion,
       "dev.zio"       %% "zio-streams"      % zioVersion,
-      "dev.zio"       %% "zio-kafka"        % "0.17.0",
-      "dev.zio"       %% "zio-test"         % zioVersion % "test",
-      "dev.zio"       %% "zio-test-sbt"     % zioVersion % "test"
+      "dev.zio"       %% "zio-kafka"        % zioKafkaVersion,
+      "dev.zio"       %% "zio-test"         % zioVersion % Test,
+      "dev.zio"       %% "zio-test-sbt"     % zioVersion % Test
     )
   )
   .settings(testFrameworks += new TestFramework("zio.test.sbt.ZTestFramework"))

@@ -1,6 +1,6 @@
 import zio.{App, Dequeue, Has, Ref, RIO, Task, UManaged, URLayer, URManaged, ZIO, ZLayer, ZManaged, console}
 import zio.es.{EventJournal, EventSourcing, PersistenceId}
-import zio.es.storage.memory.InMemoryStorage
+import zio.es.storage.memory.InMemoryJournal
 import zio.stream.{Sink, ZStream}
 import java.util.NoSuchElementException
 import scala.collection.immutable.Queue
@@ -23,7 +23,7 @@ trait ShoppingCart:
   def get(cart: PersistenceId): Task[State]
   def add(cart: PersistenceId)(item: String)(quantity: Int): Task[Unit]
   def remove(cart: PersistenceId)(item: String): Task[Unit]
-  def subscribe: UManaged[Dequeue[Event]]
+  def subscribe: UManaged[Dequeue[(PersistenceId, Event)]]
 
 object ShoppingCart:
   def get(cart: PersistenceId): RIO[Has[ShoppingCart], State] =
@@ -35,7 +35,7 @@ object ShoppingCart:
   def remove(cart: PersistenceId)(item: String): RIO[Has[ShoppingCart], Unit] =
     ZIO.serviceWith[ShoppingCart](_.remove(cart)(item))
 
-  def subscribe: URManaged[Has[ShoppingCart], Dequeue[Event]] =
+  def subscribe: URManaged[Has[ShoppingCart], Dequeue[(PersistenceId, Event)]] =
     ZManaged.serviceWithManaged[ShoppingCart](_.subscribe)
 
 case class ShoppingCartLive(source: EventSourcing[State, Event]) extends ShoppingCart:
@@ -89,6 +89,6 @@ object Example extends App:
       )
 
     val env =
-      journal >>> InMemoryStorage.layer >>> source >>> ShoppingCartLive.layer
+      journal >>> InMemoryJournal.layer >>> source >>> ShoppingCartLive.layer
 
     program.provideCustomLayer(env).exitCode
