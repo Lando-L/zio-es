@@ -16,47 +16,34 @@ object InMemoryStorageSpec extends DefaultRunnableSpec:
   val state = 1
 
   def spec = suite("InMemoryStorageSpec")(
-    testM("persist correctly appends an event to the storage") {
-      for
-        states <- Ref.make[Map[PersistenceId, Int]](Map.empty)
-        events <- Ref.make[Map[PersistenceId, Queue[Event]]](Map.empty)
-        storage = InMemoryStorage(states, events)
-        _      <- storage.persist(id)(Event.Increment)
-        _      <- storage.persist(id)(Event.Increment)
-        _      <- storage.persist(id)(Event.Decrement)
-        result <- events.get
-      yield assert(result.get(id))(isSome(equalTo(Queue(Event.Increment, Event.Increment, Event.Decrement))))
-    },
     testM("retrieve correcly fetches states from the storage") {
       for
         states <- Ref.make(Map(id -> state))
-        events <- Ref.make[Map[PersistenceId, Queue[Event]]](Map.empty)
-        storage = InMemoryStorage(states, events)
+        storage = InMemoryStorage(states)
         result <- storage.retrieve(id)
       yield assert(result)(equalTo(state))
     },
     testM("retrieve fails to fetch states if their id is not found") {
       for
         states <- Ref.make[Map[PersistenceId, Int]](Map.empty)
-        events <- Ref.make[Map[PersistenceId, Queue[Event]]](Map.empty)
-        storage = InMemoryStorage(states, events)
+        storage = InMemoryStorage(states)
         result <- storage.retrieve(id).run
       yield assert(result)(fails(isSubtype[NoSuchElementException](anything)))
     },
-    testM("replay correcly fetches events from the storage") {
+    testM("update correcly modifies states within the storage") {
       for
-        states <- Ref.make[Map[PersistenceId, Int]](Map.empty)
-        events <- Ref.make(Map(id -> Queue(Event.Increment, Event.Increment, Event.Decrement)))
-        storage = InMemoryStorage(states, events)
-        result <- storage.replay(id).run(Sink.collectAll)
-      yield assert(result)(equalTo(Chunk(Event.Increment, Event.Increment, Event.Decrement)))
+        states <- Ref.make(Map(id -> state))
+        storage = InMemoryStorage(states)
+        _      <- storage.update(id)(_ + 1)
+        result <- storage.retrieve(id)
+      yield assert(result)(equalTo(state + 1))
     },
-    testM("replay fails to fetch events if their id is not found") {
+    testM("update fails to modify states if their id is not found") {
       for
         states <- Ref.make[Map[PersistenceId, Int]](Map.empty)
-        events <- Ref.make[Map[PersistenceId, Queue[Event]]](Map.empty)
-        storage = InMemoryStorage(states, events)
-        result <- storage.replay(id).run(Sink.collectAll).run
+        storage = InMemoryStorage(states)
+        _      <- storage.update(id)(_ + 1)
+        result <- storage.retrieve(id).run
       yield assert(result)(fails(isSubtype[NoSuchElementException](anything)))
     }
   )

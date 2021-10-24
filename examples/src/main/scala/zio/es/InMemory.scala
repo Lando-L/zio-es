@@ -4,6 +4,7 @@ import zio.es.storage.memory.InMemoryJournal
 import zio.stream.{Sink, ZStream}
 import java.util.NoSuchElementException
 import scala.collection.immutable.Queue
+import zio.es.storage.memory.InMemoryStorage
 
 case class State(items: Map[String, Int])
 
@@ -40,7 +41,7 @@ object ShoppingCart:
 
 case class ShoppingCartLive(source: EventSourcing[State, Event]) extends ShoppingCart:
   override def get(cart: PersistenceId) =
-    source.replay(cart)(State.empty)
+    source.get(cart)
 
   override def add(cart: PersistenceId)(item: String)(quantity: Int) =
     source.log(cart)(Event.Added(item, quantity))
@@ -75,20 +76,17 @@ object Example extends App:
         yield state
       }
 
-    val journal =
-      ZLayer.fromEffect(
-        Ref.make[Map[PersistenceId, Queue[Event]]](Map.empty)
-      )
+    def eventHandler(state: State, event: Event): State =
+      event match
+        case Event.Added(item, quantity) => state.add(item)(quantity)
+        case Event.Removed(item)         => state.remove(item)
 
-    val source =
-      ZLayer.fromEffect(
-        EventJournal.make[State, Event](1) {
-          case (state, Event.Added(item, quantity)) => state.add(item)(quantity)
-          case (state, Event.Removed(item))         => state.remove(item)
-        }
-      )
-
+    val storage = ZLayer.fromEffect(Ref.make[Map[PersistenceId, State]](Map.empty))
+    val journal = ZLayer.fromEffect(Ref.make[Map[PersistenceId, Queue[Event]]](Map.empty))
+    val source  = ZLayer.fromEffect(EventSourcing.make[State, Event](5)(eventHandler)(State.empty))
     val env =
-      journal >>> InMemoryJournal.layer >>> source >>> ShoppingCartLive.layer
+      ((storage >>> InMemoryStorage.layer) ++ (journal >>> InMemoryJournal.layer))
+        >>> source
+        >>> ShoppingCartLive.layer
 
     program.provideCustomLayer(env).exitCode
