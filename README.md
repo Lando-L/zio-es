@@ -1,6 +1,8 @@
-## Welcome to ZIO Event Sourcing
+# Welcome to ZIO Event Sourcing
 
 ZIO Event Sourcing is a type-safe library adding event sourcing concepts to the zio ecosystem.
+
+## Quickstart
 
 ### Creating Event Sourcing behaviour
 
